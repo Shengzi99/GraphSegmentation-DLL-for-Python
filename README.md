@@ -1,2 +1,2 @@
-# GraphSegmentation-plug-play-python-lib
-a graph segmentation lib for python, implemented in c++, wrapped by pybind11
+# Graph Segmentation DLL for Python
+this is a full c++ implementation of [***Felzenszwalb, P. F. and D. P. Huttenlocher (2004). "Efficient graph-based image segmentation." IJCV***](http://www.people.cs.uchicago.edu/~pff/papers/seg-ijcv.pdf). I wrapped it into a plug&play Python .pyd/.so(for win/linux) lib. Simply download the suitable version of .pyd/.so file and copy it to site-packages folder, then you can "import GraphSeg as GS" to use.

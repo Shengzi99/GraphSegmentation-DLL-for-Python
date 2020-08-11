@@ -11,9 +11,9 @@ public:
 	GraphSeg(py::array_t<double> inImg);
 	~GraphSeg();
 
-	void segment(double k, double sigma);
+	void segment(double k, double sigma, long min_size);
 	py::array_t<long> getSeg();
-	py::array_t<double> getImage();
+	py::array_t<double> getFilteredImage();
 	long getRegionNum() { return region_num; };
 private:
 	const double* img;
@@ -25,7 +25,7 @@ private:
 	long h;
 
 	long region_num;
-	long* segImage(const double* img, long ch, long h, long w, double k);
+	long* segImage(const double* img, long ch, long h, long w, double k, long min_size);
 	void gaussianFilter(double sigma);
 };
 
@@ -48,16 +48,17 @@ GraphSeg::GraphSeg(py::array_t<double> inImg) {
 }
 
 GraphSeg::~GraphSeg() {
-	delete seg;
+	delete[] seg;
+	delete[] img_filtered;
 }
 
-void GraphSeg::segment(double k, double sigma) {
+void GraphSeg::segment(double k, double sigma, long min_size) {
 	if (sigma != -1) {
 		gaussianFilter(sigma);
-		this->seg = segImage(this->img_filtered, ch, h, w, k);
+		this->seg = segImage(this->img_filtered, ch, h, w, k, min_size);
 	}
 	else {
-		this->seg = segImage(this->img, ch, h, w, k);
+		this->seg = segImage(this->img, ch, h, w, k, min_size);
 	}
 }
 
@@ -68,7 +69,7 @@ py::array_t<long> GraphSeg::getSeg() {
 		seg);
 }
 
-py::array_t<double> GraphSeg::getImage() {
+py::array_t<double> GraphSeg::getFilteredImage() {
 	return py::array_t<double>(
 		{ch, h, w}, 
 		{ h * w * sizeof(double), w * sizeof(double), sizeof(double) }, 
@@ -80,7 +81,7 @@ void GraphSeg::gaussianFilter(double sigma) {
 }
 
 // segent an [channel, height, width] shaped image
-long* GraphSeg::segImage(const double* img, long ch, long h, long w, double k) {
+long* GraphSeg::segImage(const double* img, long ch, long h, long w, double k, long min_size) {
 	edge* edges = new edge[h * w * 4];
 	long eNum = 0;
 	for (int y = 0; y < h; y++) {
@@ -115,6 +116,14 @@ long* GraphSeg::segImage(const double* img, long ch, long h, long w, double k) {
 	}
 
 	forest* F = segGraph(h * w, eNum, edges, k);
+
+	for (int i = 0; i < eNum; i++) {
+		int a = F->find(edges[i].a);
+		int b = F->find(edges[i].b);
+		if ((a != b) && ((F->size(a) < min_size) || (F->size(b) < min_size))) {
+			F->join(a, b);
+		}
+	}
 
 	delete[] edges;
 
@@ -154,6 +163,6 @@ PYBIND11_MODULE(GraphSeg, m) {
 		.def(py::init< py::array_t<double>>())
 		.def("segment", &GraphSeg::segment)
 		.def("getSeg", &GraphSeg::getSeg, py::return_value_policy::copy)
-		.def("getImage", &GraphSeg::getImage, py::return_value_policy::copy)
+		.def("getFilteredImage", &GraphSeg::getFilteredImage, py::return_value_policy::copy)
 		.def("getRegionNum", &GraphSeg::getRegionNum);
 }

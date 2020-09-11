@@ -2,6 +2,7 @@
 #include <pybind11/numpy.h>
 #include <iostream>
 #include <set>
+#include <string>
 #include "segAlgorithm.h"
 #include "gaussianFilter.h"
 
@@ -17,6 +18,7 @@ public:
 	py::array_t<double> getFilteredImage();
 	py::array_t<long> getSupPixelGraph();
 	long getRegionNum() { return region_num; };
+	py::array_t<long> getRegionSize();
 private:
 	const double* img;
 	double* img_filtered;
@@ -28,6 +30,7 @@ private:
 	long h;
 
 	long region_num;
+	long* region_size;
 	long* segImage(const double* img, long ch, long h, long w, double k, long min_size);
 	void gaussianFilter(double sigma);
 };
@@ -80,6 +83,14 @@ py::array_t<double> GraphSeg::getFilteredImage() {
 		img_filtered);
 }
 
+py::array_t<long> GraphSeg::getRegionSize() {
+
+	return py::array_t<long>(
+		{ region_num },
+		{ sizeof(long) },
+		region_size);
+}
+
 py::array_t<long> GraphSeg::getSupPixelGraph() {
 	delete[] supEdges;
 	set<long>* nb = new set<long>[region_num];
@@ -129,7 +140,10 @@ void GraphSeg::gaussianFilter(double sigma) {
 
 // segent an [channel, height, width] shaped image
 long* GraphSeg::segImage(const double* img, long ch, long h, long w, double k, long min_size) {
-	edge* edges = new edge[h * w * 4];
+	delete[] region_size;
+
+	long pixNum = h * w;
+	edge* edges = new edge[pixNum * 4];
 	long eNum = 0;
 	for (long y = 0; y < h; y++) {
 		for (long x = 0; x < w; x++) {
@@ -162,8 +176,9 @@ long* GraphSeg::segImage(const double* img, long ch, long h, long w, double k, l
 		}
 	}
 
-	forest* F = segGraph(h * w, eNum, edges, k);
+	forest* F = segGraph(pixNum, eNum, edges, k);
 
+	// merge region smaller than min_size
 	for (long i = 0; i < eNum; i++) {
 		long a = F->find(edges[i].a);
 		long b = F->find(edges[i].b);
@@ -174,30 +189,40 @@ long* GraphSeg::segImage(const double* img, long ch, long h, long w, double k, l
 
 	delete[] edges;
 
-	long* result = new long[h * w];
-	for (long y = 0; y < h; y++) {
-		for (long x = 0; x < w; x++) {
-			result[y * w + x] = F->find(y * w + x);
-		}
+	// get root index of every node
+	long* result = new long[pixNum];
+	for (long i = 0; i < pixNum; i++) {
+		result[i] = F->find(i);
 	}
-	long* match = new long[h * w];
-	long* res_copy = new long[h * w];
-	for (long i = 0; i < h * w; i++) {
+
+	long* match = new long[pixNum];
+	long* res_copy = new long[pixNum];
+
+	// get a copy of result, and sort the copy
+	for (long i = 0; i < pixNum; i++) {
 		res_copy[i] = result[i];
 	}
-	sort(res_copy, res_copy + (h * w));
+	sort(res_copy, res_copy + pixNum);
 
+	// count the number of unique value in res_copy, and get the initial root number to ordered number map
 	long count = 0;
-	for (long i = 0; i < h * w; i++) {
+	for (long i = 0; i < pixNum; i++) {
 		match[res_copy[i]] = count;
-		if ((i < h * w -1 ) && (res_copy[i + 1] > res_copy[i]))
+		if ((i < pixNum -1 ) && (res_copy[i + 1] > res_copy[i]))
 			count++;
 	}
-	for (long i = 0; i < h * w; i++) {
+
+	// map result value to ordered number 
+	for (long i = 0; i < pixNum; i++) {
 		result[i] = match[result[i]];
 	}
 
 	region_num = count + 1;
+	region_size = new long[region_num];
+	for (long i = 0; i < pixNum; i++) {		
+		long root = F->find(i);
+		region_size[match[root]] = F->size(root);
+	}
 
 	delete F;
 	delete[] match;
@@ -212,6 +237,7 @@ PYBIND11_MODULE(GraphSeg, m) {
 		.def("getSeg", &GraphSeg::getSeg, py::return_value_policy::copy)
 		.def("getFilteredImage", &GraphSeg::getFilteredImage, py::return_value_policy::copy)
 		.def("getSupPixelGraph", &GraphSeg::getSupPixelGraph, py::return_value_policy::copy)
-		.def("getRegionNum", &GraphSeg::getRegionNum);
+		.def("getRegionNum", &GraphSeg::getRegionNum)
+		.def("getRegionSize", &GraphSeg::getRegionSize, py::return_value_policy::copy);
 
 }

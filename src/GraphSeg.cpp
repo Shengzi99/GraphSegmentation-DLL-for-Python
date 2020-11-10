@@ -49,7 +49,9 @@ GraphSeg::GraphSeg(py::array_t<double, py::array::c_style | py::array::forcecast
 		this->w = shape[2];
 		this->img_filtered = new double[ch * h * w];
 		this->seg = new long[this->w * this->h];
-		this->region_num = this->w * this->h;		
+		this->region_num = this->w * this->h;
+		this->region_size = NULL;
+		this->supEdges = NULL;
 	}
 }
 
@@ -57,6 +59,7 @@ GraphSeg::~GraphSeg() {
 	delete[] seg;
 	delete[] img_filtered;
 	delete[] supEdges;
+	delete[] region_size;
 }
 
 void GraphSeg::segment(double k, double sigma, long min_size) {
@@ -141,6 +144,7 @@ void GraphSeg::gaussianFilter(double sigma) {
 // segent an [channel, height, width] shaped image
 long* GraphSeg::segImage(const double* img, long ch, long h, long w, double k, long min_size) {
 	delete[] region_size;
+	region_size = NULL;
 
 	long pixNum = h * w;
 	edge* edges = new edge[pixNum * 4];

@@ -3,6 +3,7 @@
 #include <iostream>
 #include <set>
 #include <string>
+#include <assert.h>
 #include "segAlgorithm.h"
 #include "gaussianFilter.h"
 
@@ -16,7 +17,7 @@ public:
 	void segment(double k, double sigma, long min_size);
 	py::array_t<long> getSeg();
 	py::array_t<double> getFilteredImage();
-	py::array_t<long> getSupPixelGraph();
+	py::array_t<long> getSupPixelGraph(long edge_method);
 	long getRegionNum() { return region_num; };
 	py::array_t<long> getRegionSize();
 private:
@@ -94,43 +95,61 @@ py::array_t<long> GraphSeg::getRegionSize() {
 		region_size);
 }
 
-py::array_t<long> GraphSeg::getSupPixelGraph() {
+py::array_t<long> GraphSeg::getSupPixelGraph(long edge_method) {
 	delete[] supEdges;
-	set<long>* nb = new set<long>[region_num];
-
 	long edgeNum = 0;
-	for (long i = 0; i < h; i++) {
-		for (long j = 0; j < w; j++) {
-			if ((i<h-1)&&(seg[(i + 1)*w + j] > seg[i * w + j])) {
-				nb[seg[i * w + j]].insert(seg[(i + 1) * w + j]);
-			}
-			if ((i>0)&&(seg[(i - 1) * w + j] > seg[i * w + j])) {
-				nb[seg[i * w + j]].insert(seg[(i - 1) * w + j]);
-			}
-			if ((j<w-1)&&(seg[i * w + j + 1] > seg[i * w + j])) {
-				nb[seg[i * w + j]].insert(seg[i * w + j + 1]);
-			}
-			if ((j>0)&&(seg[i * w + j - 1] > seg[i * w + j])) {
-				nb[seg[i * w + j]].insert(seg[i * w + j - 1]);
+
+	if (edge_method == 0) {
+		set<long>* nb = new set<long>[region_num];
+		for (long i = 0; i < h; i++) {
+			for (long j = 0; j < w; j++) {
+				if ((i<h-1)&&(seg[(i + 1)*w + j] > seg[i * w + j])) {
+					nb[seg[i * w + j]].insert(seg[(i + 1) * w + j]);
+				}
+				if ((i>0)&&(seg[(i - 1) * w + j] > seg[i * w + j])) {
+					nb[seg[i * w + j]].insert(seg[(i - 1) * w + j]);
+				}
+				if ((j<w-1)&&(seg[i * w + j + 1] > seg[i * w + j])) {
+					nb[seg[i * w + j]].insert(seg[i * w + j + 1]);
+				}
+				if ((j>0)&&(seg[i * w + j - 1] > seg[i * w + j])) {
+					nb[seg[i * w + j]].insert(seg[i * w + j - 1]);
+				}
 			}
 		}
-	}
-	for (long i = 0; i < region_num; i++) {
-		edgeNum += nb[i].size();
-	}
-	supEdges = new long[2 * edgeNum];
-
-	long curIndex = 0;
-	for (long i = 0; i < region_num; i++) {
-		for (auto it = nb[i].begin(); it != nb[i].end();it++) {
-			supEdges[curIndex] = i;
-			curIndex++;
-			supEdges[curIndex] = *it;
-			curIndex++;
+		for (long i = 0; i < region_num; i++) {
+			edgeNum += nb[i].size();
 		}
-	}
+		supEdges = new long[2 * edgeNum];
 
-	delete[] nb;
+		long curIndex = 0;
+		for (long i = 0; i < region_num; i++) {
+			for (auto it = nb[i].begin(); it != nb[i].end();it++) {
+				supEdges[curIndex] = i;
+				curIndex++;
+				supEdges[curIndex] = *it;
+				curIndex++;
+			}
+		}
+
+		delete[] nb;
+	}
+	else if (edge_method == 1){
+		edgeNum = region_num * (region_num - 1) / 2;
+		supEdges = new long[2 * edgeNum];
+		long curIndex = 0;
+		for (long i = 0; i < region_num; i++){
+			for (long j = i + 1; j < region_num; j++){
+				supEdges[curIndex] = i;
+				curIndex++;
+				supEdges[curIndex] = j;
+				curIndex++;
+			}
+		}
+		// assert((2 * edgeNum) == curIndex);
+	}
+	else {assert(0);}
+
 	return py::array_t<long>(
 		{ edgeNum,  2L},
 		{ 2 * sizeof(long), sizeof(long) },
